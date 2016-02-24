@@ -12,19 +12,20 @@ Prerequisitos
 -------------
 
 De sistema, en los sistemas Debian/Ubuntu se resuelven ejecutando el siguiente comando:
-'''
+```
 apt-get install zlib1g-dev libxslt-dev libxml2 libxml2-dev tshark
-'''
+```
 
 De Python, se resuelven ejecutando el siguiente comando:
 
-'''
+```
 pip install -r dependencies.txt
-'''
+```
 
 Uso
 ---
-'''
+
+```
 usage: watsondt.py [-h] [-c] [-p {openioc,cybox}] [-a] [-l LIVE_CAPTURE] [-i]
                    [-v]
 
@@ -42,7 +43,7 @@ optional arguments:
   -i, --incibe          Comprueba que la IP de origen no esté presente en el
                         servicio AntiBotnet de INCIBE.
   -v, --version         Muestra la version del programa
-'''
+```
 
 Autor
 -----
