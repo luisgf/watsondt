@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""
+    Luis Gonzalez Fernandez
+    luisgf@luisgf.es
+
+    Watson Detection Tools, 01/08/2014
+
+"""
+
+import uuid, sys
+from datetime import datetime
+from enum import Enum
+from errores import IOCTypeError
+
+try:
+    from lxml.etree import Element, SubElement, Comment, tostring
+except ImportError:
+    print('[!] Libreria lxml no instalada. Porfavor, instala la dependencia')
+    sys.exit(-1)
+
+
+class IOCOperator(Enum):
+    OR = 0
+    AND = 1
+
+
+class IOCItemCondition(Enum):
+    CONTAINS = 0
+    IS = 1
+
+
+class IOCItemCtxType(Enum):
+    MIR = 0
+
+
+class IOCItemContType(Enum):
+    STRING = 0
+    MD5 = 1
+
+
+def norm_operator(operator):
+    """ Normalizacion del Operador """
+    if operator == 'OR':
+        return IOCOperator.OR
+    elif operator == 'AND':
+        return IOCOperator.AND
+    else:
+        raise IOCTypeError('IOCOperator desconocido.', operator)
+
+
+def norm_condition(tipo):
+    """ Normalizacion de tipo de datos """
+    if tipo == 'contains':
+        return IOCItemCondition.CONTAINS
+    elif tipo == 'is':
+        return IOCItemCondition.IS
+    else:
+        raise IOCTypeError('IOCItemCondition desconocido.', tipo)
+
+
+def norm_item_ctx_type(tipo):
+    """ Normalizacion del tipo de Context/Item """
+    if tipo == 'mir':
+        return IOCItemCtxType.MIR
+    else:
+        raise IOCTypeError('IOCItemCtxType desconocido.', tipo)
+
+
+def norm_item_cont_type(tipo):
+    """ Normalizacion del tipo en Content/Item """
+    if tipo == 'string':
+        return IOCItemContType.STRING
+    elif tipo == 'md5':
+        return IOCItemContType.MD5
+    else:
+        raise IOCTypeError('IOCItemContType desconocido.', tipo)
+
+
+def genera_uuid():
+    """ Genera un UUID acorde al RFC-4122 """
+    return str(uuid.uuid4())
+
+
+def genera_ioc(lista_hosts, archivo):
+    """ Esta funcion genera un perfil IOC con una lista de IPs
+        pasada por parametros """
+
+    fecha = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')  # En UTC
+    ioc = IOC(genera_uuid(), 'IOC conexiones maliciosas',
+                             'Perfil UCAM-IOC de conexiones maliciosas',
+                             'Watson Detection Tool', fecha)
+
+    for host in lista_hosts:
+        ioc_indicador = IOCIndicator('OR', genera_uuid())
+        ioc_item = IOCItem(genera_uuid(), 'is', 'PortItem', 'PortItem/remoteIP',
+                           'mir', host, 'string')
+
+        ioc_indicador.añade_item(ioc_item)
+        ioc.añade_indicador(ioc_indicador)
+
+    with open(archivo, 'wb') as file:
+        file.write(ioc.to_xml())
+
+    print('[+] Perfil IOC escrito en: %s' % archivo)
+
+
+class IOCItem():
+    def __init__(self, item_id=None, condicion=None, documento=None, busqueda=None,
+                 tipo=None, param=None, tipo_param=None):
+        self.item_id = item_id
+        self.condicion = norm_condition(condicion)
+        self.documento = documento
+        self.busqueda = busqueda
+        self.tipo = norm_item_ctx_type(tipo)
+        self.param = param
+        self.tipo_param = norm_item_cont_type(tipo_param)
+
+    def get_condicion(self):
+        if self.condicion is IOCItemCondition.IS:
+            return 'is'
+        elif self.condicion is IOCItemCondition.CONTAINS:
+            return 'contains'
+
+    def get_tipo_ctx(self):
+        if self.tipo is IOCItemCtxType.MIR:
+            return 'mir'
+
+    def get_tipo_cnt(self):
+        if self.tipo_param is IOCItemContType.STRING:
+            return 'string'
+        elif self.tipo_param is IOCItemContType.MD5:
+            return 'md5'
+
+
+class IOCIndicator():
+    def __init__(self, ind_op=None, ind_id=None):
+        self.operator = norm_operator(ind_op)
+        self.ind_id = ind_id
+        self.sub_indicator = None
+        self.items = []
+
+    def set_sub(self, subs):
+        self.sub_indicator = subs
+
+    def añade_item(self, item):
+        self.items.append(item)
+
+    def get_operator(self):
+        if self.operator is IOCOperator.OR:
+            return 'OR'
+        elif self.operator is IOCOperator.AND:
+            return 'AND'
+
+
+class IOC():
+    def __init__(self, ioc_id=None, s_desc=None, desc=None, autor=None, fecha=None,
+                 links=None, definicion=list()):
+        self.ioc_id = ioc_id
+        self.s_descripcion = s_desc
+        self.descripcion = desc
+        self.autor = autor
+        self.fecha = fecha
+        self.links = links
+        self.definicion = definicion
+
+    def añade_indicador(self, ioc_indicator):
+        self.definicion.append(ioc_indicator)
+
+    def to_xml(self):
+
+        """
+            Generamos el documento XML
+        """
+        # XML namespaces definidos por Mandiant
+        NSMAP = {None:'http://schemas.mandiant.com/2010/ioc',
+                 'xsi':'http://www.w3.org/2001/XMLSchema-instance',
+                 'xsd':'http://www.w3.org/2001/XMLSchema'}
+
+        root = Element('ioc', nsmap=NSMAP)
+        root.append(Comment('Autogenerated by Watson-Detection-Tools by luisgf'))
+        root.attrib['id'] = self.ioc_id
+        root.attrib['last-modified'] = self.fecha
+        SubElement(root, 'short_description').text = self.s_descripcion
+        SubElement(root, 'description').text = self.descripcion
+        SubElement(root, 'keywords').text = 'host,malware,auto'
+        SubElement(root, 'authored_by').text = self.autor
+        SubElement(root, 'authored_date').text = self.fecha
+        links = SubElement(root, 'links')
+        definitions = SubElement(links, 'definition')
+
+        for indicador in self.definicion:
+            indicator = SubElement(definitions, 'Indicator')
+            indicator.attrib['operator'] = indicador.get_operator()
+            indicator.attrib['id'] = indicador.ind_id
+
+            for item in indicador.items:
+                xmlitem = SubElement(indicator, 'IndicatorItem')
+                xmlitem.attrib['id'] = item.item_id
+                xmlitem.attrib['condition'] = item.get_condicion()
+                xmlctx = SubElement(xmlitem, 'Context')
+                xmlctx.attrib['document'] = item.documento
+                xmlctx.attrib['search'] = item.busqueda
+                xmlctx.attrib['type'] = item.get_tipo_ctx()
+                xmlcnt = SubElement(xmlitem, 'Content')
+                xmlcnt.attrib['type'] = item.get_tipo_cnt()
+                xmlcnt.text = item.param
+
+        return tostring(root, pretty_print=True, xml_declaration=True,
+                        encoding='utf-8')
+
+
+if __name__ == '__main__':
+    pass

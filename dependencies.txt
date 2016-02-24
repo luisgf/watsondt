@@ -1,0 +1,6 @@
+requests
+pyshark
+psutil
+netaddr
+lxml
+cybox
